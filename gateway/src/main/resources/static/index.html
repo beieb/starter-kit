@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Smart Lab - starter dashboard</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 60rem; }
+    pre { background: #f4f4f4; padding: .8rem; overflow: auto; max-height: 20rem; }
+    input { width: 14rem; }
+  </style>
+</head>
+<body>
+  <h1>Smart Lab - starter dashboard</h1>
+
+  <p>
+    Token: <input id="token" value="operator-secret">
+    <button onclick="loadThings()">Load things</button>
+    <button onclick="connect()">Connect to the event stream</button>
+  </p>
+
+  <h2>Registered things (GET /things)</h2>
+  <pre id="things">-</pre>
+
+  <h2>Live events (GET /events/stream)</h2>
+  <pre id="events"></pre>
+
+  <script>
+    const token = () => document.getElementById('token').value;
+
+    async function loadThings() {
+      const res = await fetch('/things', { headers: { Authorization: 'Bearer ' + token() } });
+      document.getElementById('things').textContent =
+        res.status + '\n' + JSON.stringify(await res.json(), null, 2);
+    }
+
+    // EventSource cannot send headers: token in the query string
+    let source;
+    function connect() {
+      if (source) source.close();
+      source = new EventSource('/events/stream?token=' + encodeURIComponent(token()));
+      for (const name of ['hello', 'registry', 'thing']) {
+        source.addEventListener(name, e => log(name, e.data));
+      }
+      source.onerror = () => log('error', 'stream closed (wrong token or gateway stopped?)');
+    }
+
+    function log(name, data) {
+      const pre = document.getElementById('events');
+      pre.textContent = new Date().toLocaleTimeString() + ' [' + name + '] ' + data + '\n' + pre.textContent;
+    }
+
+    // TODO: one card per thing (properties, inputs, actions), updated on "thing" events
+  </script>
+</body>
+</html>

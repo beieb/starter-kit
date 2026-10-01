@@ -1,0 +1,12 @@
+server:
+  port: 8080
+
+spring:
+  task:
+    scheduling:
+      pool:
+        size: 4
+
+gateway:
+  # Authorization: Bearer <token> on /things/** and /events/**
+  token: operator-secret
