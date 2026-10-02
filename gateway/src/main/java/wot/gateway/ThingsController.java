@@ -124,10 +124,17 @@ public class ThingsController {
                 request.contentType(MediaType.APPLICATION_JSON).body(body);
             }
             // exchange() ne lève pas d'exception sur un 4xx/5xx du thing : on relaie sa réponse
-            return request.exchange((req, res) -> ResponseEntity
-                    .status(res.getStatusCode())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(res.bodyTo(String.class)));
+            return request.exchange((req, res) -> {
+                String text = res.bodyTo(String.class);
+                int code = res.getStatusCode().value();
+                // erreur d'un thing sans corps JSON (page HTML, vide...) : on fabrique le JSON
+                if (code >= 400 && (text == null || !text.trim().startsWith("{"))) {
+                    text = "{\"status\":" + code + ",\"error\":\"thing " + id + " answered with an error\"}";
+                }
+                return ResponseEntity.status(res.getStatusCode())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(text);
+            });
         } catch (RestClientException e) {
             throw new ApiException(HttpStatus.BAD_GATEWAY, "thing " + id + " does not answer");
         }

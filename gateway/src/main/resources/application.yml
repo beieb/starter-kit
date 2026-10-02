@@ -10,3 +10,6 @@ spring:
 gateway:
   # Authorization: Bearer <token> on /things/** and /events/**
   token: operator-secret
+  rules:
+    t1-seconds: 10            # défaut du sujet : 60, démo : 10
+    comfort-temperature: 19
