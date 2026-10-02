@@ -60,6 +60,7 @@ public class LampController {
         set("on", !(Boolean) state.get("on"));
         return Map.of("action", "toggle", "status", "completed", "properties", state);
     }
+    
 
     // TODO: property brightness (0..100) and action setBrightness
 

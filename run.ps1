@@ -10,7 +10,7 @@ $services = @(
     @{ Name = 'gateway'; Jar = 'gateway\target\gateway.jar' },
     @{ Name = 'lamp';    Jar = 'thing-lamp\target\thing-lamp.jar' },
     @{ Name = 'motion';  Jar = 'motion-sensor\target\motion-sensor.jar' }
-    # TODO: thermostat
+    @{ Name = 'thermostat'; Jar = 'thing-thermostat\target\thing-thermostat.jar' }
 )
 $ids = foreach ($s in $services) {
     $p = Start-Process java -ArgumentList '-jar', $s.Jar -PassThru -WindowStyle Hidden `
