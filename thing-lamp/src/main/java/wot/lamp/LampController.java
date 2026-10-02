@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class LampController {
 
-    private final Map<String, Object> state = new ConcurrentHashMap<>(Map.of("on", false));
+    private final Map<String, Object> state = new ConcurrentHashMap<>(Map.of("on", false, "brightness", 50));
     private final GatewayClient gateway;
 
     public LampController(GatewayClient gateway) {
@@ -47,6 +47,17 @@ public class LampController {
             return error(HttpStatus.NOT_FOUND, "unknown property " + name);
         }
         Object value = body.get("value");
+        if(name.equals("brightness")) {
+            if(!(value instanceof Integer s)) {
+                return error(HttpStatus.BAD_REQUEST, "property on expects a number {\"brightness\": 0-100");
+            }
+            if (!validBrightness(value)) {
+                return error(HttpStatus.BAD_REQUEST, "setBrightness expects {\"value\": number between 0 and 100} "+ value+" type "+ value.getClass());
+            }
+            set("brightness", s);
+            return ResponseEntity.ok(Map.of("name", "brightness", "value", s));
+
+        }
         if (!(value instanceof Boolean)) {
             return error(HttpStatus.BAD_REQUEST, "property on expects a boolean {\"value\": true|false}");
         }
@@ -63,6 +74,19 @@ public class LampController {
     
 
     // TODO: property brightness (0..100) and action setBrightness
+    @PostMapping("/actions/setBrightness")
+    public ResponseEntity<Map<String, Object>> setBrightness(@RequestBody Map<String, Object> body) {
+        Object value = body.get("value");
+        if (!validBrightness(value)) {
+            return error(HttpStatus.BAD_REQUEST, "setBrightness expects {\"value\": number between 0 and 100} "+ value+" type "+ value.getClass());
+        }
+        set("Brightness", ((Number) value).doubleValue());
+        return ResponseEntity.ok(Map.of("action", "setBrightness", "status", "completed", "properties", state));
+    }
+
+    private static boolean validBrightness(Object value) {
+        return value instanceof Number n && n.doubleValue() >= 0 && n.doubleValue() <= 100;
+    }
 
     private void set(String name, Object value) {
         state.put(name, value);

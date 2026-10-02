@@ -17,12 +17,22 @@ public final class LampDescription {
         model.put("name", "Lamp");
         model.put("description", "Virtual lamp of the Smart Lab");
         model.put("properties", Map.of(
-                "on", Map.of("type", "boolean", "description", "true when the lamp is switched on")
+                "on", Map.of(
+                        "type", "boolean",
+                        "description", "true when the lamp is switched on"
+                ),
                 // TODO: brightness
+                "brightness", Map.of(
+                        "type", "number",
+                        "description", "current brightness"
+                )
         ));
         model.put("actions", Map.of(
-                "toggle", Map.of("description", "switches the lamp on or off")
+                "toggle", Map.of("description", "switches the lamp on or off"),
                 // TODO: setBrightness
+                "setBrightness", Map.of(
+                        "description", "sets the target brightness"
+                )
         ));
         model.put("events", Map.of(
                 "propertyChanged", Map.of("description", "a property changed: {\"property\": ..., \"value\": ...}")));
