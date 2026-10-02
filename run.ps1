@@ -9,7 +9,9 @@ New-Item -ItemType Directory -Force logs | Out-Null
 $services = @(
     @{ Name = 'gateway'; Jar = 'gateway\target\gateway.jar' },
     @{ Name = 'lamp';    Jar = 'thing-lamp\target\thing-lamp.jar' }
-    # TODO: thermostat, motion sensor
+    @{ Name = 'thermostat'; Jar = 'thing-thermostat\target\thing-thermostat.jar' }
+
+# TODO: thermostat, motion sensor
 )
 $ids = foreach ($s in $services) {
     $p = Start-Process java -ArgumentList '-jar', $s.Jar -PassThru -WindowStyle Hidden `

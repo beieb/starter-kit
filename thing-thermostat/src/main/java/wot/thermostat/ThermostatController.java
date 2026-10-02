@@ -85,10 +85,15 @@ public class ThermostatController {
     @Scheduled(initialDelay = 2000, fixedDelay = 2000)
     public void simulate() {
         double current = (Double) state.get("temperature");
+        String mode = (String) state.get("mode");
+        double target = (Double) state.get("target");
         double goal = "off".equals(state.get("mode")) ? AMBIENT : (Double) state.get("target");
         double next = Math.abs(goal - current) <= 0.5 ? goal : current + Math.signum(goal - current) * 0.5;
         if (next != current) {
             set("temperature", next);
+            if (!"off".equals(mode) && current < target && next == target) {
+                gateway.emit("targetReached", Map.of("target", target));
+            }
         }
     }
 
