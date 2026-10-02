@@ -14,6 +14,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 /** Registry of the things (in memory). */
 @RestController
@@ -23,13 +29,18 @@ public class ThingsController {
     public record Thing(String id, String name, String baseUrl, Map<String, Object> model) {
     }
 
+
     private final Map<String, Thing> things = new ConcurrentHashMap<>();
     private final EventHub hub;
+    private final RestClient http;
 
     public ThingsController(EventHub hub) {
         this.hub = hub;
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(2000);   // un thing arrêté doit échouer vite (502)
+        factory.setReadTimeout(5000);
+        this.http = RestClient.builder().requestFactory(factory).build();
     }
-
     @PostMapping
     public ResponseEntity<Thing> register(@RequestBody Thing thing) {
         if (thing.id() == null || thing.id().isBlank() || thing.baseUrl() == null) {
@@ -77,5 +88,49 @@ public class ThingsController {
     //   PUT  /things/{id}/properties/{name}
     //   POST /things/{id}/actions/{name}
     //   POST /things/{id}/automation/resume   (R4, bonus)
+    // ---------- Proxy vers les things (Auth Proxy) ----------
+
+    @GetMapping("/{id}/properties")
+    public ResponseEntity<String> readAll(@PathVariable String id) {
+        return forward(id, HttpMethod.GET, null, "/properties");
+    }
+
+    @GetMapping("/{id}/properties/{name}")
+    public ResponseEntity<String> read(@PathVariable String id, @PathVariable String name) {
+        return forward(id, HttpMethod.GET, null, "/properties/{name}", name);
+    }
+
+    @PutMapping("/{id}/properties/{name}")
+    public ResponseEntity<String> write(@PathVariable String id, @PathVariable String name,
+                                        @RequestBody(required = false) String body) {
+        return forward(id, HttpMethod.PUT, body, "/properties/{name}", name);
+    }
+
+    @PostMapping("/{id}/actions/{name}")
+    public ResponseEntity<String> invoke(@PathVariable String id, @PathVariable String name,
+                                         @RequestBody(required = false) String body) {
+        return forward(id, HttpMethod.POST, body, "/actions/{name}", name);
+    }
+
+    // TODO (R4, bonus) : POST /things/{id}/automation/resume
+
+    /** Relaie la requête au thing et renvoie sa réponse telle quelle (statut + corps). */
+    private ResponseEntity<String> forward(String id, HttpMethod method, String body,
+                                           String path, Object... vars) {
+        Thing thing = find(id); // 404 si inconnu
+        try {
+            RestClient.RequestBodySpec request = http.method(method).uri(thing.baseUrl() + path, vars);
+            if (body != null && !body.isBlank()) {
+                request.contentType(MediaType.APPLICATION_JSON).body(body);
+            }
+            // exchange() ne lève pas d'exception sur un 4xx/5xx du thing : on relaie sa réponse
+            return request.exchange((req, res) -> ResponseEntity
+                    .status(res.getStatusCode())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(res.bodyTo(String.class)));
+        } catch (RestClientException e) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "thing " + id + " does not answer");
+        }
+    }
     // thing not answering: 502
 }
