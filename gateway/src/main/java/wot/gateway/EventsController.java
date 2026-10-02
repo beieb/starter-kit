@@ -22,10 +22,12 @@ public class EventsController {
 
     private final EventHub hub;
     private final ThingsController things;
+    private final Automation automation;
 
-    public EventsController(EventHub hub, ThingsController things) {
+    public EventsController(EventHub hub, ThingsController things, Automation automation) {
         this.hub = hub;
         this.things = things;
+        this.automation = automation;
     }
 
     @GetMapping(path = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -41,6 +43,8 @@ public class EventsController {
         things.find(event.thingId()); // 404 if unknown
         hub.broadcast("thing", event);
         // TODO: rules R1, R2 (R3, R4: bonus)
+        hub.broadcast("thing", event);
+        automation.onEvent(event);
         return ResponseEntity.accepted().build();
     }
 }
