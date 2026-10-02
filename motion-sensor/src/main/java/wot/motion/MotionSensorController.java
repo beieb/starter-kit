@@ -1,4 +1,4 @@
-package com.etudes.motionsensor;
+package wot.motion;
 
 import java.time.Instant;
 import java.util.Map;
@@ -18,9 +18,9 @@ import org.springframework.web.bind.annotation.RestController;
 public class MotionSensorController {
 
     private final Map<String, Object> state = new ConcurrentHashMap<>();
-    private final GatewayClientMotion gateway;
+    private final GatewayClient gateway;
 
-    public MotionSensorController(GatewayClientMotion gateway) {
+    public MotionSensorController(GatewayClient gateway) {
         this.gateway = gateway;
         this.state.put("lastMotion", Instant.now().toString());
     }
@@ -44,22 +44,28 @@ public class MotionSensorController {
     }
 
     @PutMapping("/properties/{name}")
-    public ResponseEntity<Map<String, Object>> write(@PathVariable String name, @RequestBody Map<String, Object> body) {
+    public ResponseEntity<Map<String, Object>> write(@PathVariable String name,
+                                                    @RequestBody(required = false) Map<String, Object> body) {
         if (!state.containsKey(name)) {
             return error(HttpStatus.NOT_FOUND, "unknown property " + name);
         }
-        // lastMotion est en lecture seule (read-only)
         return error(HttpStatus.BAD_REQUEST, "property " + name + " is read-only");
     }
 
     @PostMapping("/actions/simulateMotion")
     public ResponseEntity<Map<String, Object>> simulateMotion() {
         String now = Instant.now().toString();
-
         state.put("lastMotion", now);
         gateway.emit("motion", Map.of("timestamp", now));
+        return ResponseEntity.ok(Map.of("action", "simulateMotion", "status", "completed", "properties", state));
+    }
 
-        return ResponseEntity.ok(Map.of("status", "executed", "timestamp", now));
+    @PostMapping("/actions/{name}")
+    public ResponseEntity<Map<String, Object>> unknownAction(@PathVariable String name) {
+        if ("simulateMotion".equals(name)) {
+            return simulateMotion();
+        }
+        return error(HttpStatus.NOT_FOUND, "unknown action " + name);
     }
 
     private static ResponseEntity<Map<String, Object>> error(HttpStatus status, String message) {

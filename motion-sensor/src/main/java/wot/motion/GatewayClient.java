@@ -1,4 +1,4 @@
-package com.etudes.motionsensor;
+package wot.motion;
 
 import java.time.Instant;
 import java.util.Map;
@@ -21,16 +21,16 @@ import jakarta.annotation.PreDestroy;
 
 /** Calls to the gateway: registration (POST /things), events (POST /events), unregistration. */
 @Component
-public class GatewayClientMotion {
+public class GatewayClient {
 
-    private static final Logger log = LoggerFactory.getLogger(GatewayClientMotion.class);
+    private static final Logger log = LoggerFactory.getLogger(GatewayClient.class);
 
     private final RestClient rest;
     private final String selfUrl;
     private final ExecutorService sender = Executors.newSingleThreadExecutor();
     private volatile boolean registered;
 
-    public GatewayClientMotion(@Value("${gateway.url}") String gatewayUrl,
+    public GatewayClient(@Value("${gateway.url}") String gatewayUrl,
                          @Value("${gateway.token}") String token,
                          @Value("${thing.base-url}") String selfUrl) {
         SimpleClientHttpRequestFactory timeouts = new SimpleClientHttpRequestFactory();
@@ -53,7 +53,7 @@ public class GatewayClientMotion {
         try {
             rest.post().uri("/things")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(Map.of("id", MotionSensorDescription.ID, "name", "MotionSensor", "baseUrl", selfUrl,
+                    .body(Map.of("id", MotionSensorDescription.ID, "name", "Motion Sensor", "baseUrl", selfUrl,
                             "model", MotionSensorDescription.model()))
                     .retrieve()
                     .toBodilessEntity();
@@ -67,7 +67,7 @@ public class GatewayClientMotion {
         }
     }
 
-    // sent from a separate thread: the gateway may call the lamp back while handling the event
+    // sent from a separate thread: the gateway may call the thing back while handling the event
     public void emit(String type, Map<String, Object> data) {
         String timestamp = Instant.now().toString();
         sender.submit(() -> send(type, data, timestamp));

@@ -25,5 +25,6 @@
   <modules>
     <module>gateway</module>
     <module>thing-lamp</module>
+    <module>motion-sensor</module>
   </modules>
 </project>
