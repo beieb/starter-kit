@@ -41,7 +41,6 @@ public class EventsController {
             throw new ApiException(HttpStatus.BAD_REQUEST, "fields thingId and type are required");
         }
         things.find(event.thingId()); // 404 if unknown
-        hub.broadcast("thing", event);
         // TODO: rules R1, R2 (R3, R4: bonus)
         hub.broadcast("thing", event);
         automation.onEvent(event);

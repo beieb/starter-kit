@@ -4,6 +4,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -19,14 +20,26 @@ import org.springframework.web.bind.annotation.RestController;
 public class ThermostatController {
 
     private static final Set<String> MODES = Set.of("off", "heat", "eco");
-    private static final double AMBIENT = 15.0;
-
-    private final Map<String, Object> state = new ConcurrentHashMap<>(
-            Map.of("temperature", 18.0, "target", 20.0, "mode", "eco"));
     private final GatewayClient gateway;
+    private final Map<String, Object> state = new ConcurrentHashMap<>();
+    private final double outsideTemperature;
+    private final double heatingStep;
+    private final double coolingStep;
 
-    public ThermostatController(GatewayClient gateway) {
+    public ThermostatController(GatewayClient gateway,
+                                @Value("${thermostat.initial-temperature:17.5}") double initialTemperature,
+                                @Value("${thermostat.initial-target:19.0}") double initialTarget,
+                                @Value("${thermostat.initial-mode:off}") String initialMode,
+                                @Value("${thermostat.outside-temperature:15.0}") double outsideTemperature,
+                                @Value("${thermostat.heating-step:0.5}") double heatingStep,
+                                @Value("${thermostat.cooling-step:0.05}") double coolingStep) {
         this.gateway = gateway;
+        this.outsideTemperature = outsideTemperature;
+        this.heatingStep = heatingStep;
+        this.coolingStep = coolingStep;
+        state.put("temperature", initialTemperature);
+        state.put("target", initialTarget);
+        state.put("mode", initialMode);
     }
 
     @GetMapping({"/", "/model"})
@@ -81,17 +94,29 @@ public class ThermostatController {
         return ResponseEntity.ok(Map.of("action", "setTarget", "status", "completed", "properties", state));
     }
 
-    // simulation: every 2 s the temperature moves by 0.5 °C towards the target (or towards ambient if off)
-    @Scheduled(initialDelay = 2000, fixedDelay = 2000)
+    @Scheduled(initialDelayString = "${thermostat.tick-ms:1000}", fixedDelayString = "${thermostat.tick-ms:1000}")
     public void simulate() {
         double current = (Double) state.get("temperature");
-        String mode = (String) state.get("mode");
         double target = (Double) state.get("target");
-        double goal = "off".equals(state.get("mode")) ? AMBIENT : (Double) state.get("target");
-        double next = Math.abs(goal - current) <= 0.5 ? goal : current + Math.signum(goal - current) * 0.5;
+        String mode = (String) state.get("mode");
+
+        double next = current;
+        boolean reached = false;
+        if ("off".equals(mode)) {
+            // dérive lentement vers la température extérieure, sans jamais descendre en dessous
+            if (current > outsideTemperature) {
+                next = Math.max(outsideTemperature, current - coolingStep);
+            }
+        } else if (current < target) {
+            next = Math.min(target, current + heatingStep);
+            reached = next == target;            // atteinte par le bas : seul cas qui émet l'événement
+        } else if (current > target) {
+            next = Math.max(target, current - coolingStep);   // redescend sans événement
+        }
+
         if (next != current) {
-            set("temperature", next);
-            if (!"off".equals(mode) && current < target && next == target) {
+            set("temperature", Math.round(next * 100.0) / 100.0);
+            if (reached) {
                 gateway.emit("targetReached", Map.of("target", target));
             }
         }

@@ -1,56 +1,254 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Smart Lab - starter dashboard</title>
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 60rem; }
-    pre { background: #f4f4f4; padding: .8rem; overflow: auto; max-height: 20rem; }
-    input { width: 14rem; }
-  </style>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Smart Lab dashboard</title>
+    <style>
+        :root{--bg:#e9eeea;--panel:#f7f9f6;--ink:#17302c;--muted:#566b66;--line:#c3d0c9;--accent:#14695f;--amber:#c98a00;--heat:#b8431c;--bad:#a12a2a}
+        *{box-sizing:border-box}
+        body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,"Segoe UI",sans-serif}
+        header{display:flex;flex-wrap:wrap;gap:.75rem 1.5rem;align-items:center;justify-content:space-between;padding:1rem 1.5rem;border-bottom:1px solid var(--line);background:var(--panel)}
+        h1{font-size:1.2rem;margin:0}
+        h2{font-size:1rem;margin:0 0 .6rem}
+        h3{font-size:1.05rem;margin:0}
+        input,button{font:inherit;color:inherit}
+        input[type=password],input[type=number]{padding:.4rem .6rem;border:1px solid var(--line);border-radius:4px;background:#fff}
+        button{padding:.4rem .8rem;border:1px solid var(--accent);border-radius:4px;background:var(--accent);color:#fff;cursor:pointer}
+        button.ghost{background:transparent;color:var(--accent)}
+        button.active{background:var(--ink);border-color:var(--ink);color:#fff}
+        :focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+        .connect{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
+        .status{font-size:.9rem;color:var(--muted)}
+        .status::before{content:"";display:inline-block;width:.6rem;height:.6rem;border-radius:50%;background:var(--bad);margin-right:.4rem}
+        .status.live::before{background:var(--accent)}
+        main{display:grid;grid-template-columns:minmax(0,1fr) 22rem;gap:1.5rem;padding:1.5rem}
+        @media(max-width:900px){main{grid-template-columns:1fr}}
+        #board{display:grid;grid-template-columns:repeat(auto-fit,minmax(17rem,1fr));gap:1rem;align-content:start}
+        .card{background:var(--panel);border:1px solid var(--line);border-top:4px solid var(--line);border-radius:6px;padding:1rem}
+        .card[data-on="true"]{border-top-color:var(--amber)}
+        .card[data-mode="heat"]{border-top-color:var(--heat)}
+        .card[data-mode="eco"]{border-top-color:var(--accent)}
+        .card p{margin:.1rem 0 .8rem;color:var(--muted);font-size:.9rem}
+        .row{display:flex;justify-content:space-between;padding:.25rem 0;border-bottom:1px dashed var(--line)}
+        .row output{font-variant-numeric:tabular-nums;font-weight:600}
+        .controls{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.9rem;align-items:center}
+        .controls input[type=number]{width:5rem}
+        .controls input[type=range]{flex:1 1 100%}
+        .pulse{animation:pulse 1s}
+        @keyframes pulse{from{background:#f3dd9b}to{background:var(--panel)}}
+        @media(prefers-reduced-motion:reduce){.pulse{animation:none}}
+        #journal{list-style:none;margin:.6rem 0 0;padding:0;max-height:70vh;overflow:auto;font-size:.85rem}
+        #journal li{padding:.3rem 0;border-bottom:1px solid var(--line)}
+        #journal time{color:var(--muted);margin-right:.4rem}
+        #toast{position:fixed;left:1rem;bottom:1rem;max-width:26rem;padding:.6rem .9rem;border-radius:4px;background:var(--ink);color:#fff}
+        #toast.error{background:var(--bad)}
+        .empty{color:var(--muted)}
+    </style>
 </head>
 <body>
-  <h1>Smart Lab - starter dashboard</h1>
+<header>
+    <h1>Smart Lab</h1>
+    <div class="connect">
+        <label for="token">Access token</label>
+        <input id="token" type="password" autocomplete="off" placeholder="Bearer token">
+        <button id="connect">Connect</button>
+        <span id="status" class="status">Not connected</span>
+    </div>
+</header>
+<main>
+    <section>
+        <h2>Things</h2>
+        <div id="board"><p class="empty">Enter your token and connect to list the registered things.</p></div>
+    </section>
+    <aside>
+        <h2>Live events</h2>
+        <label><input type="checkbox" id="showTemp"> Show temperature updates</label>
+        <ol id="journal"></ol>
+    </aside>
+</main>
+<div id="toast" hidden role="status"></div>
 
-  <p>
-    Token: <input id="token" value="operator-secret">
-    <button onclick="loadThings()">Load things</button>
-    <button onclick="connect()">Connect to the event stream</button>
-  </p>
+<script>
+    const $ = (sel, root = document) => root.querySelector(sel);
+    let token = '';
+    let state = {};          // thing id -> last known property values
+    let source = null;       // EventSource
 
-  <h2>Registered things (GET /things)</h2>
-  <pre id="things">-</pre>
-
-  <h2>Live events (GET /events/stream)</h2>
-  <pre id="events"></pre>
-
-  <script>
-    const token = () => document.getElementById('token').value;
-
-    async function loadThings() {
-      const res = await fetch('/things', { headers: { Authorization: 'Bearer ' + token() } });
-      document.getElementById('things').textContent =
-        res.status + '\n' + JSON.stringify(await res.json(), null, 2);
-    }
-
-    // EventSource cannot send headers: token in the query string
-    let source;
-    function connect() {
-      if (source) source.close();
-      source = new EventSource('/events/stream?token=' + encodeURIComponent(token()));
-      for (const name of ['hello', 'registry', 'thing']) {
-        source.addEventListener(name, e => log(name, e.data));
+    // ---------- helpers ----------
+    function h(tag, props = {}, ...kids) {
+      const el = document.createElement(tag);
+      for (const [k, v] of Object.entries(props)) {
+        if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+        else if (k === 'class') el.className = v;
+        else el.setAttribute(k, v);
       }
-      source.onerror = () => log('error', 'stream closed (wrong token or gateway stopped?)');
+      el.append(...kids);
+      return el;
+    }
+    const button = (label, onclick, cls = '', extra = {}) => h('button', { class: cls, onclick, ...extra }, label);
+
+    let toastTimer;
+    function notify(message, isError = false) {
+      const t = $('#toast');
+      t.textContent = message;
+      t.className = isError ? 'error' : '';
+      t.hidden = false;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { t.hidden = true; }, 4000);
     }
 
-    function log(name, data) {
-      const pre = document.getElementById('events');
-      pre.textContent = new Date().toLocaleTimeString() + ' [' + name + '] ' + data + '\n' + pre.textContent;
+    // all calls go through the gateway, never to a thing directly
+    async function api(method, path, body) {
+      const res = await fetch(path, {
+        method,
+        headers: { Authorization: 'Bearer ' + token, ...(body !== undefined && { 'Content-Type': 'application/json' }) },
+        body: body === undefined ? undefined : JSON.stringify(body)
+      });
+      let data = null;
+      try { data = await res.json(); } catch { /* empty body */ }
+      if (!res.ok) throw new Error(res.status + ' ' + (data?.error || res.statusText));
+      return data;
     }
 
-    // TODO: one card per thing (properties, inputs, actions), updated on "thing" events
-  </script>
+    function fmt(name, value) {
+      if (name === 'lastMotion') return new Date(value).toLocaleTimeString();
+      if (name === 'brightness') return value + ' %';
+      if (name === 'temperature' || name === 'target') return Number(value).toFixed(1) + ' °C';
+      if (typeof value === 'boolean') return value ? 'on' : 'off';
+      return String(value);
+    }
+
+    // ---------- things ----------
+    async function loadThings() {
+      const board = $('#board');
+      try {
+        const list = await api('GET', '/things');
+        state = {};
+        board.replaceChildren();
+        for (const t of list) {
+          const [detail, props] = await Promise.all([
+            api('GET', '/things/' + t.id),
+            api('GET', '/things/' + t.id + '/properties')
+          ]);
+          board.append(card(t.id, detail, props));
+          for (const [name, value] of Object.entries(props)) show(t.id, name, value);
+        }
+        if (!list.length) board.append(h('p', { class: 'empty' }, 'No thing is registered yet. Start the things and wait a few seconds.'));
+      } catch (e) {
+        board.replaceChildren(h('p', { class: 'empty' }, 'Cannot list the things: ' + e.message));
+        notify(e.message, true);
+      }
+    }
+
+    function card(id, detail, props) {
+      const el = h('section', { class: 'card', 'data-thing': id },
+        h('h3', {}, detail.name || id),
+        h('p', {}, detail.model?.description || ''));
+      for (const name of Object.keys(props)) {
+        el.append(h('div', { class: 'row' }, h('span', {}, name), h('output', { 'data-prop': name }, '-')));
+      }
+      const controls = controlsFor(id);
+      if (controls.length) el.append(h('div', { class: 'controls' }, ...controls));
+      return el;
+    }
+
+    function controlsFor(id) {
+      if (id === 'lamp') {
+        return [
+          button('Switch on', () => write(id, 'on', true)),
+          button('Switch off', () => write(id, 'on', false), 'ghost'),
+          h('input', { type: 'range', min: 0, max: 100, 'data-input': 'brightness', 'aria-label': 'Brightness',
+            onchange: e => write(id, 'brightness', Number(e.target.value)) })
+        ];
+      }
+      if (id === 'thermostat') {
+        const target = h('input', { type: 'number', min: 5, max: 30, step: 0.5, 'data-input': 'target', 'aria-label': 'Target temperature' });
+        return [
+          ...['off', 'heat', 'eco'].map(m => button(m, () => write(id, 'mode', m), 'ghost', { 'data-choice': m })),
+          target,
+          button('Set target', () => act(id, 'setTarget', { value: Number(target.value) }))
+        ];
+      }
+      if (id === 'motion') return [button('Simulate motion', () => act(id, 'simulateMotion'))];
+      return [];
+    }
+
+    // update one value on screen
+    function show(id, name, value) {
+      (state[id] ||= {})[name] = value;
+      const el = $(`[data-thing="${id}"]`);
+      if (!el) return;
+      const out = $(`[data-prop="${name}"]`, el);
+      if (out) out.textContent = fmt(name, value);
+      const input = $(`[data-input="${name}"]`, el);
+      if (input && document.activeElement !== input) input.value = value;
+      if (name === 'on') el.dataset.on = value;
+      if (name === 'mode') {
+        el.dataset.mode = value;
+        el.querySelectorAll('[data-choice]').forEach(b => b.classList.toggle('active', b.dataset.choice === value));
+      }
+    }
+
+    async function write(id, name, value) {
+      try {
+        const r = await api('PUT', `/things/${id}/properties/${name}`, { value });
+        show(id, name, r.value);
+      } catch (e) { notify(e.message, true); }
+    }
+
+    async function act(id, name, body) {
+      try {
+        await api('POST', `/things/${id}/actions/${name}`, body);
+        notify(name + ' done');
+      } catch (e) { notify(e.message, true); }
+    }
+
+    // ---------- live events (Server-Sent Events) ----------
+    function setStatus(live) {
+      const s = $('#status');
+      s.className = 'status' + (live ? ' live' : '');
+      s.textContent = live ? 'Live' : 'Disconnected';
+    }
+
+    function openStream() {
+      if (source) source.close();
+      // EventSource cannot send headers: the token goes in the query string
+      source = new EventSource('/events/stream?token=' + encodeURIComponent(token));
+      source.addEventListener('hello', () => setStatus(true));
+      source.addEventListener('registry', () => loadThings());
+      source.addEventListener('thing', e => onThing(JSON.parse(e.data)));
+      source.onerror = () => setStatus(false);
+    }
+
+    function onThing(ev) {
+      if (ev.type === 'propertyChanged') show(ev.thingId, ev.data.property, ev.data.value);
+      if (ev.type === 'motion') {
+        show(ev.thingId, 'lastMotion', ev.data.timestamp);
+        const el = $(`[data-thing="${ev.thingId}"]`);
+        if (el) { el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse'); }
+      }
+      const isTemperature = ev.type === 'propertyChanged' && ev.data.property === 'temperature';
+      if (isTemperature && !$('#showTemp').checked) return;
+      const text = ev.type === 'propertyChanged'
+        ? `${ev.data.property} = ${ev.data.value}`
+        : `${ev.type} ${JSON.stringify(ev.data)}`;
+      const journal = $('#journal');
+      journal.prepend(h('li', {}, h('time', {}, new Date().toLocaleTimeString()), h('strong', {}, ev.thingId + ' '), text));
+      while (journal.children.length > 100) journal.lastChild.remove();
+    }
+
+    // ---------- start ----------
+    function connect() {
+      token = $('#token').value.trim();
+      sessionStorage.setItem('token', token);
+      loadThings();
+      openStream();
+    }
+    $('#connect').addEventListener('click', connect);
+    $('#token').addEventListener('keydown', e => { if (e.key === 'Enter') connect(); });
+    const saved = sessionStorage.getItem('token');
+    if (saved) { $('#token').value = saved; connect(); }
+</script>
 </body>
 </html>
