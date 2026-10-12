@@ -33,9 +33,12 @@ public class ThingsController {
     private final Map<String, Thing> things = new ConcurrentHashMap<>();
     private final EventHub hub;
     private final RestClient http;
+    private final Overrides overrides;
 
-    public ThingsController(EventHub hub) {
+
+    public ThingsController(EventHub hub, Overrides overrides) {
         this.hub = hub;
+        this.overrides = overrides;
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(2000);   // un thing arrêté doit échouer vite (502)
         factory.setReadTimeout(5000);
@@ -92,42 +95,49 @@ public class ThingsController {
 
     @GetMapping("/{id}/properties")
     public ResponseEntity<String> readAll(@PathVariable String id) {
-        return forward(id, HttpMethod.GET, null, "/properties");
+        return forward(id, HttpMethod.GET, null,false, "/properties");
     }
 
     @GetMapping("/{id}/properties/{name}")
     public ResponseEntity<String> read(@PathVariable String id, @PathVariable String name) {
-        return forward(id, HttpMethod.GET, null, "/properties/{name}", name);
+        return forward(id, HttpMethod.GET, null,false, "/properties/{name}", name);
     }
 
     @PutMapping("/{id}/properties/{name}")
     public ResponseEntity<String> write(@PathVariable String id, @PathVariable String name,
                                         @RequestBody(required = false) String body) {
-        return forward(id, HttpMethod.PUT, body, "/properties/{name}", name);
+        return forward(id, HttpMethod.PUT, body,true, "/properties/{name}", name);
     }
 
     @PostMapping("/{id}/actions/{name}")
     public ResponseEntity<String> invoke(@PathVariable String id, @PathVariable String name,
                                          @RequestBody(required = false) String body) {
-        return forward(id, HttpMethod.POST, body, "/actions/{name}", name);
+        return forward(id, HttpMethod.POST, body, true, "/actions/{name}", name);
     }
 
     // TODO (R4, bonus) : POST /things/{id}/automation/resume
+    @PostMapping("/{id}/automation/resume")
+    public Map<String, Object> resume(@PathVariable String id) {
+        find(id); // 404 if unknown
+        overrides.resume(id);
+        return Map.of("thingId", id, "automation", "auto");
+    }
 
     /** Relaie la requête au thing et renvoie sa réponse telle quelle (statut + corps). */
-    private ResponseEntity<String> forward(String id, HttpMethod method, String body,
+    private ResponseEntity<String> forward(String id, HttpMethod method, String body, boolean manual,
                                            String path, Object... vars) {
-        Thing thing = find(id); // 404 si inconnu
+        Thing thing = find(id);
         try {
             RestClient.RequestBodySpec request = http.method(method).uri(thing.baseUrl() + path, vars);
             if (body != null && !body.isBlank()) {
                 request.contentType(MediaType.APPLICATION_JSON).body(body);
             }
-            // exchange() ne lève pas d'exception sur un 4xx/5xx du thing : on relaie sa réponse
             return request.exchange((req, res) -> {
                 String text = res.bodyTo(String.class);
                 int code = res.getStatusCode().value();
-                // erreur d'un thing sans corps JSON (page HTML, vide...) : on fabrique le JSON
+                if (manual && res.getStatusCode().is2xxSuccessful()) {
+                    overrides.manual(id);   // R4: a client acted on this thing
+                }
                 if (code >= 400 && (text == null || !text.trim().startsWith("{"))) {
                     text = "{\"status\":" + code + ",\"error\":\"thing " + id + " answered with an error\"}";
                 }

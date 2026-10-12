@@ -44,6 +44,8 @@
         #toast{position:fixed;left:1rem;bottom:1rem;max-width:26rem;padding:.6rem .9rem;border-radius:4px;background:var(--ink);color:#fff}
         #toast.error{background:var(--bad)}
         .empty{color:var(--muted)}
+        .auto{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin-top:.9rem;font-size:.9rem;color:var(--muted)}
+        .card[data-automation="manual"] .auto strong{color:var(--heat)}
     </style>
 </head>
 <body>
@@ -133,6 +135,7 @@
           ]);
           board.append(card(t.id, detail, props));
           for (const [name, value] of Object.entries(props)) show(t.id, name, value);
+          setAutomation(t.id, t.automation || 'auto');
         }
         if (!list.length) board.append(h('p', { class: 'empty' }, 'No thing is registered yet. Start the things and wait a few seconds.'));
       } catch (e) {
@@ -150,6 +153,11 @@
       }
       const controls = controlsFor(id);
       if (controls.length) el.append(h('div', { class: 'controls' }, ...controls));
+      if (id === 'lamp' || id === 'thermostat') {   // the things the rules act on
+        el.append(h('div', { class: 'auto' },
+          h('span', {}, 'Automation:'), h('strong', { 'data-auto': '' }, 'running'),
+          button('Resume automation', () => resume(id), 'ghost', { 'data-resume': '', hidden: '' })));
+      }
       return el;
     }
 
@@ -204,6 +212,24 @@
       } catch (e) { notify(e.message, true); }
     }
 
+    // R4: a manual action pauses the rules on this thing
+    function setAutomation(id, mode) {
+      const el = $(`[data-thing="${id}"]`);
+      if (!el) return;
+      el.dataset.automation = mode;
+      const label = $('[data-auto]', el);
+      if (label) label.textContent = mode === 'manual' ? 'paused (manual override)' : 'running';
+      const btn = $('[data-resume]', el);
+      if (btn) btn.hidden = mode !== 'manual';
+    }
+
+    async function resume(id) {
+      try {
+        await api('POST', `/things/${id}/automation/resume`);
+        notify('Automation resumed on ' + id);
+      } catch (e) { notify(e.message, true); }
+    }
+
     // ---------- live events (Server-Sent Events) ----------
     function setStatus(live) {
       const s = $('#status');
@@ -218,6 +244,11 @@
       source.addEventListener('hello', () => setStatus(true));
       source.addEventListener('registry', () => loadThings());
       source.addEventListener('thing', e => onThing(JSON.parse(e.data)));
+      source.addEventListener('automation', e => {
+        const d = JSON.parse(e.data);
+        setAutomation(d.thingId, d.automation);
+        addLog(d.thingId, d.automation === 'manual' ? 'automation paused (manual action)' : 'automation resumed');
+      });
       source.onerror = () => setStatus(false);
     }
 
@@ -233,8 +264,12 @@
       const text = ev.type === 'propertyChanged'
         ? `${ev.data.property} = ${ev.data.value}`
         : `${ev.type} ${JSON.stringify(ev.data)}`;
+      addLog(ev.thingId, text);
+    }
+
+    function addLog(who, text) {
       const journal = $('#journal');
-      journal.prepend(h('li', {}, h('time', {}, new Date().toLocaleTimeString()), h('strong', {}, ev.thingId + ' '), text));
+      journal.prepend(h('li', {}, h('time', {}, new Date().toLocaleTimeString()), h('strong', {}, who + ' '), text));
       while (journal.children.length > 100) journal.lastChild.remove();
     }
 

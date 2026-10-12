@@ -27,24 +27,36 @@ public class Automation {
 
     private final ThingsController things;
     private final TaskScheduler scheduler;
+    private final Overrides overrides;
     private final RestClient http;
     private final RestartableTimer lampOff;
+    private final RestartableTimer energySaving;
     private final Duration t1;
+    private final Duration t3;
     private final double comfortTemperature;
+    private final double ecoTemperature;
 
-    public Automation(ThingsController things, TaskScheduler scheduler,
+    public Automation(ThingsController things, TaskScheduler scheduler, Overrides overrides,
                       @Value("${gateway.rules.t1-seconds:60}") long t1Seconds,
-                      @Value("${gateway.rules.comfort-temperature:19}") double comfortTemperature) {
+                      @Value("${gateway.rules.t3-seconds:300}") long t3Seconds,
+                      @Value("${gateway.rules.comfort-temperature:19}") double comfortTemperature,
+                      @Value("${gateway.rules.eco-temperature:17}") double ecoTemperature) {
         this.things = things;
         this.scheduler = scheduler;
+        this.overrides = overrides;
         this.t1 = Duration.ofSeconds(t1Seconds);
+        this.t3 = Duration.ofSeconds(t3Seconds);
         this.comfortTemperature = comfortTemperature;
+        this.ecoTemperature = ecoTemperature;
         this.lampOff = new RestartableTimer(scheduler);
+        this.energySaving = new RestartableTimer(scheduler);
 
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(2000);
         factory.setReadTimeout(5000);
         this.http = RestClient.builder().requestFactory(factory).build();
+
+        armEnergySaving();
     }
 
     /** Appelé par EventsController : on répond 202 tout de suite, les règles tournent à part. */
@@ -55,6 +67,8 @@ public class Automation {
     private synchronized void handle(ThingEvent event) {
         switch (event.type()) {
             case "motion" -> {
+                armEnergySaving();
+                safely("R3(end)", this::r3End);
                 // ordre imposé par le sujet : fin de R3 (bonus), puis R1, puis R2
                 safely("R1", this::r1OnMotion);
                 safely("R2", this::r2OnMotion);
@@ -92,6 +106,33 @@ public class Automation {
         }
     }
 
+    // ---------- R3: economie d'energie ----------
+
+    private void armEnergySaving() {
+        energySaving.restart(t3, this::r3Timeout);
+    }
+
+    private synchronized void r3Timeout() {
+        safely("R3", () -> {
+            if (overrides.isActive("thermostat")) {
+                return;
+            }
+            put("thermostat", "target", ecoTemperature);
+            put("thermostat", "mode", "eco");
+            log.info("R3: no motion for {} s, thermostat in eco mode at {} °C", t3.toSeconds(), ecoTemperature);
+        });
+    }
+
+    private void r3End() {
+        if (overrides.isActive("thermostat")) {
+            return;
+        }
+        if ("eco".equals(read("thermostat", "mode"))) {
+            put("thermostat", "target", comfortTemperature);
+            put("thermostat", "mode", "off");
+            log.info("R3: motion detected, energy saving ends");
+        }
+    }
     // ---------- appels directs aux things ----------
 
     private void put(String thingId, String property, Object value) {

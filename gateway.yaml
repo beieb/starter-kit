@@ -234,6 +234,36 @@ paths:
         '502':
           $ref: '#/components/responses/BadGateway'
 
+  /things/{id}/automation/resume:
+    parameters:
+      - $ref: '#/components/parameters/ThingId'
+    post:
+      tags: [Proxy]
+      summary: Resume the automation on a thing (end of a manual override, rule R4)
+      description: |
+        A write or an action sent by a client to the lamp or to the thermostat pauses the
+        automation rules on this thing for T4 seconds. This call ends the override earlier.
+        The thing keeps its current state; the rules act on it again from the next event.
+      operationId: resumeAutomation
+      responses:
+        '200':
+          description: Automation resumed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  thingId:
+                    type: string
+                    example: lamp
+                  automation:
+                    type: string
+                    example: auto
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /events:
     post:
       tags: [Events]
@@ -271,7 +301,8 @@ paths:
       summary: Live event stream (Server-Sent Events)
       description: |
         One-way channel to the browsers. Named events: `hello` (on connection), `registry`
-        (a thing registered or unregistered) and `thing` (a `ThingEvent`). A comment line
+        (a thing registered or unregistered), `thing` (a `ThingEvent`) and `automation`
+        (`{thingId, automation: auto|manual}`, when a manual override starts or ends). A comment line
         keeps the connection alive every 15 seconds.
       operationId: streamEvents
       security:
@@ -450,6 +481,10 @@ components:
         name:
           type: string
           example: Lamp
+        automation:
+          type: string
+          enum: [auto, manual]
+          description: '`manual` while a manual override pauses the rules on this thing (R4)'
         links:
           type: object
           properties:

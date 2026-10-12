@@ -10,12 +10,18 @@ spring:
 gateway:
   # Authorization: Bearer <token> on /things/** and /events/**
   token: operator-secret
+  rules:
+    t1-seconds: 10
+    t3-seconds: 30
+    t4-seconds: 60
+    comfort-temperature: 19
+    eco-temperature: 17
 
-thermostat:
-  initial-temperature: 17.5
-  initial-target: 19.0
-  initial-mode: off
-  outside-temperature: 15.0
-  heating-step: 0.5
-  cooling-step: 0.05
-  yick-ms: 1000
+#thermostat:
+#  initial-temperature: 17.5
+#  initial-target: 19.0
+#  initial-mode: off
+#  outside-temperature: 15.0
+#  heating-step: 0.5
+#  cooling-step: 0.05
+#  yick-ms: 1000
