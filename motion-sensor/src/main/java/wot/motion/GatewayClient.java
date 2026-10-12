@@ -19,7 +19,6 @@ import org.springframework.web.client.RestClientException;
 
 import jakarta.annotation.PreDestroy;
 
-/** Calls to the gateway: registration (POST /things), events (POST /events), unregistration. */
 @Component
 public class GatewayClient {
 
@@ -44,7 +43,6 @@ public class GatewayClient {
         this.selfUrl = selfUrl;
     }
 
-    // retried every 5 s until the gateway accepts the registration
     @Scheduled(initialDelay = 1000, fixedDelay = 5000)
     public void registerIfNeeded() {
         if (registered) {
@@ -60,14 +58,12 @@ public class GatewayClient {
             registered = true;
             log.info("registered with the gateway as {}", MotionSensorDescription.ID);
         } catch (HttpClientErrorException.Conflict e) {
-            // old registration still there: remove it, the next run registers again
             rest.delete().uri("/things/{id}", MotionSensorDescription.ID).retrieve().toBodilessEntity();
         } catch (RestClientException e) {
             log.warn("gateway not reachable yet ({}), retrying in 5 s", e.getMessage());
         }
     }
 
-    // sent from a separate thread: the gateway may call the thing back while handling the event
     public void emit(String type, Map<String, Object> data) {
         String timestamp = Instant.now().toString();
         sender.submit(() -> send(type, data, timestamp));
@@ -85,7 +81,7 @@ public class GatewayClient {
                     .retrieve()
                     .toBodilessEntity();
         } catch (HttpClientErrorException.NotFound e) {
-            registered = false; // gateway restarted: register again
+            registered = false;
         } catch (RestClientException e) {
             log.warn("event {} not delivered: {}", type, e.getMessage());
         }

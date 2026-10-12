@@ -3,7 +3,6 @@ package wot.motion;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** Web Thing Model of the motion sensor (GET /model). */
 public final class MotionSensorDescription {
 
     public static final String ID = "motion";

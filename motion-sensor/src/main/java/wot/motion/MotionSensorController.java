@@ -13,7 +13,6 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
-/** GET /model, GET /properties, GET|PUT /properties/{name}, POST /actions/{name}. */
 @RestController
 public class MotionSensorController {
 
